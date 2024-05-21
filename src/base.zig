@@ -131,7 +131,7 @@ pub fn base64Encode(input: []const u8, allocator: std.mem.Allocator) ![]u8 {
 }
 
 fn decode64(char: u8) u8 {
-    std.log.warn("{}", .{char});
+    std.log.debug("char in: {c}", .{char});
     return switch (char) {
         'A' => 0,
         'B' => 1,
@@ -202,47 +202,66 @@ fn decode64(char: u8) u8 {
     };
 }
 
+// todo: make this right with u6 and stuff
+//   IIII IIII IIII IIII IIII IIII
+// aaAAAA AA__ __cc CCCC CC__ ____
+//   ____ bbBB BBBB ____ __DD DDDD dd
 fn firstSixToOct(first: u8, second: u8) u8 {
     const tf = decode64(first);
     const ts = decode64(second);
-    return tf << 2 | ts >> 6;
+    std.log.debug("first: {c} {b} {}, second: {c} {b} {}", .{ first, tf, tf, second, ts, ts });
+    return tf << 2 | ts >> 4;
 }
 
 fn secondSixToOct(first: u8, second: u8) u8 {
     const tf = decode64(first);
     const ts = decode64(second);
-    return tf << 4 | ts >> 4;
+    return tf << 4 | ts >> 2;
 }
 
 fn thridSixToOct(first: u8, second: u8) u8 {
     const tf = decode64(first);
     const ts = decode64(second);
-    return tf << 6 | ts >> 2;
+    return tf << 6 | ts;
 }
 
 pub fn base64Decode(input: []const u8, allocator: std.mem.Allocator) ![]u8 {
     const input_len = input.len;
-    var i: usize = 0;
-    var j: usize = 0;
-    var output = try allocator.alloc(u8, (input_len / 4) * 3);
-    while (i < input_len) : ({
+    var output_len = (input_len / 4) * 3;
+    var i: usize = 3;
+    var j: usize = 2;
+
+    if (input_len != 0) {
+        if (input[input_len - 2] == '=') {
+            std.log.debug("minus two", .{});
+            output_len -= 2;
+        } else if (input[input_len - 1] == '=') {
+            std.log.debug("minus one", .{});
+            output_len -= 1;
+        }
+    }
+
+    var output = try allocator.alloc(u8, output_len);
+
+    while (j < output_len) : ({
         i += 4;
         j += 3;
     }) {
-        output[j] = firstSixToOct(input[i], input[i + 1]);
-        output[j + 1] = secondSixToOct(input[i + 1], input[i + 2]);
-        output[j + 2] = thridSixToOct(input[i + 2], input[i + 3]);
+        std.log.debug("len{} j{}", .{ output_len, j });
+        output[j - 2] = firstSixToOct(input[i - 3], input[i - 2]);
+        output[j - 1] = secondSixToOct(input[i - 2], input[i - 1]);
+        output[j] = thridSixToOct(input[i - 1], input[i]);
+        std.log.debug("{b}, {b}, {b}", .{ output[j - 2], output[j - 1], output[j] });
     }
 
-    // var end: usize = input_len;
-    // if (input_len != 0) {
-    //     if (input[input_len - 2] == '=') {
-    //         end -= 2;
-    //     } else if (input[input_len - 1] == '=') {
-    //         end -= 1;
-    //     }
-    // }
-    // return output[0..end];
+    if (input_len != 0) {
+        if (input[input_len - 2] == '=') {
+            output[j - 2] = firstSixToOct(input[i - 3], input[i - 2]);
+        } else if (input[input_len - 1] == '=') {
+            output[j - 2] = firstSixToOct(input[i - 3], input[i - 2]);
+            output[j - 1] = secondSixToOct(input[i - 2], input[i - 1]);
+        }
+    }
     return output;
 }
 
@@ -310,8 +329,8 @@ test "BASE64_1decode" {
     const expected = "";
     const output = try base64Decode(input, ta);
     defer ta.free(output);
-    if (std.mem.eql(u8, output, expected)) {
-        std.log.warn("not the same: output {s} expected {s}", .{ output, expected });
+    if (!std.mem.eql(u8, output, expected)) {
+        std.log.err("not the same: output {s} expected {s}", .{ output, expected });
     }
     try std.testing.expect(std.mem.eql(u8, output, expected));
 }
@@ -322,7 +341,9 @@ test "BASE64_2decode" {
     const ta = std.testing.allocator;
     const output = try base64Decode(input, ta);
     defer ta.free(output);
-    std.log.warn("not the same: output {s} expected {s}", .{ output, expected });
+    if (!std.mem.eql(u8, output, expected)) {
+        std.log.err("not the same: output {s} expected {s}", .{ output, expected });
+    }
     try std.testing.expect(std.mem.eql(u8, output, expected));
 }
 
@@ -332,7 +353,9 @@ test "BASE64_3decode" {
     const ta = std.testing.allocator;
     const output = try base64Decode(input, ta);
     defer ta.free(output);
-    std.log.warn("not the same: output {s} expected {s}", .{ output, expected });
+    if (!std.mem.eql(u8, output, expected)) {
+        std.log.err("not the same: output {s} expected {s}", .{ output, expected });
+    }
     try std.testing.expect(std.mem.eql(u8, output, expected));
 }
 
@@ -342,7 +365,9 @@ test "BASE64_4decode" {
     const ta = std.testing.allocator;
     const output = try base64Decode(input, ta);
     defer ta.free(output);
-    std.log.warn("not the same: output {s} expected {s}", .{ output, expected });
+    if (!std.mem.eql(u8, output, expected)) {
+        std.log.err("not the same: output {s} expected {s}", .{ output, expected });
+    }
     try std.testing.expect(std.mem.eql(u8, output, expected));
 }
 
@@ -352,7 +377,9 @@ test "BASE64_5decode" {
     const ta = std.testing.allocator;
     const output = try base64Decode(input, ta);
     defer ta.free(output);
-    std.log.warn("not the same: output {s} expected {s}", .{ output, expected });
+    if (!std.mem.eql(u8, output, expected)) {
+        std.log.err("not the same: output {s} expected {s}", .{ output, expected });
+    }
     try std.testing.expect(std.mem.eql(u8, output, expected));
 }
 
@@ -362,7 +389,9 @@ test "BASE64_6decode" {
     const ta = std.testing.allocator;
     const output = try base64Decode(input, ta);
     defer ta.free(output);
-    std.log.warn("not the same: output {s} expected {s}", .{ output, expected });
+    if (!std.mem.eql(u8, output, expected)) {
+        std.log.err("not the same: output {s} expected {s}", .{ output, expected });
+    }
     try std.testing.expect(std.mem.eql(u8, output, expected));
 }
 
@@ -372,132 +401,8 @@ test "BASE64_7decode" {
     const ta = std.testing.allocator;
     const output = try base64Decode(input, ta);
     defer ta.free(output);
-    std.log.warn("not the same: output {s} expected {s}", .{ output, expected });
+    if (!std.mem.eql(u8, output, expected)) {
+        std.log.err("not the same: output {s} expected {s}", .{ output, expected });
+    }
     try std.testing.expect(std.mem.eql(u8, output, expected));
 }
-// test "BASE32_1" {
-//     const input = "";
-//     const expected = "";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32_2" {
-//     const input = "f";
-//     const expected = "MY======";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32_3" {
-//     const input = "fo";
-//     const expected = "MZXQ====";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32_4" {
-//     const input = "foo";
-//     const expected = "MZXW6===";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32_5" {
-//     const input = "foob";
-//     const expected = "MZXW6YQ=";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32_6" {
-//     const input = "fooba";
-//     const expected = "MZXW6YTB";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32_7" {
-//     const input = "foobar";
-//     const expected = "MZXW6YTBOI======";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32-HEX_1" {
-//     const input = "";
-//     const expected = "";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32-HEX_2" {
-//     const input = "f";
-//     const expected = "CO======";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32-HEX_3" {
-//     const input = "fo";
-//     const expected = "CPNG====";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32-HEX_4" {
-//     const input = "foo";
-//     const expected = "CPNMU===";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32-HEX_5" {
-//     const input = "foob";
-//     const expected = "CPNMUOG=";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32-HEX_6" {
-//     const input = "fooba";
-//     const expected = "CPNMUOJ1";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE32-HEX_7" {
-//     const input = "foobar";
-//     const expected = "CPNMUOJ1E8======";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE16_1" {
-//     const input = "";
-//     const expected = "";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE16_2" {
-//     const input = "f";
-//     const expected = "66";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE16_3" {
-//     const input = "fo";
-//     const expected = "666F";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE16_4" {
-//     const input = "foo";
-//     const expected = "666F6F";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE16_5" {
-//     const input = "foob";
-//     const expected = "666F6F62";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE16_6" {
-//     const input = "fooba";
-//     const expected = "666F6F6261";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
-// test "BASE16_7" {
-//     const input = "foobar";
-//     const expected = "666F6F626172";
-//     const output = base64Encode(input);
-//     try std.testing.expect(output == expected);
-// }
