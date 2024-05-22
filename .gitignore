@@ -33,3 +33,4 @@ zig-out/
 /build-*/
 
 /docgen_tmp/
+/base64reference.zig
