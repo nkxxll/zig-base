@@ -1,4 +1,5 @@
 const std = @import("std");
+const read = std.mem.readInt;
 
 fn translate64(char: u8) u8 {
     return switch (char) {
@@ -90,6 +91,7 @@ pub fn base64Encode(input: []const u8, allocator: std.mem.Allocator) ![]u8 {
     var i: usize = 2;
     var j: usize = 0;
     const input_len = input.len;
+    // better way: @divTrunk(input_len + 2, 3) * 4
     const output_len = if (input_len % 3 == 0) (input_len / 3) * 4 else (input_len / 3) * 4 + 4;
 
     var output = try allocator.alloc(u8, output_len);
@@ -108,7 +110,7 @@ pub fn base64Encode(input: []const u8, allocator: std.mem.Allocator) ![]u8 {
     const rest = 3 - input_len % 3;
     switch (rest) {
         3 => {
-            std.debug.print("perfect fit", .{});
+            // std.debug.print("perfect fit", .{});
         },
         2 => {
             output[j] = translate64(firstOctToSix(input[i - 2]));
